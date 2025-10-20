@@ -10,7 +10,7 @@ COPY package*.json ./
 # Install dependencies
 RUN npm ci --prefer-offline --no-audit
 
-# Copy source code
+# Copy source code (includes Edge Functions)
 COPY . .
 
 # Build the application
