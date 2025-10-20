@@ -1,0 +1,3 @@
+# Coolify Configuration
+# This project uses Nixpacks for deployment
+# Make sure to set the build pack to "nixpacks" in Coolify settings

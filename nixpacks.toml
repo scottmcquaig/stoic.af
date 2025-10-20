@@ -1,0 +1,17 @@
+[phases.setup]
+nixPkgs = ["nodejs_20"]
+nixLibs = []
+aptPkgs = []
+
+[phases.install]
+cmds = ["npm ci --prefer-offline --no-audit"]
+
+[phases.build]
+cmds = ["npm run build"]
+
+[start]
+cmd = "npx serve -s build -l 3000"
+
+[variables]
+NODE_ENV = "production"
+NPM_CONFIG_LOGLEVEL = "error"
