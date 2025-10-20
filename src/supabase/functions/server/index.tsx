@@ -737,21 +737,21 @@ app.post("/make-server-6d6f37b2/payments/create-checkout", async (c) => {
         },
       ],
       mode: 'payment',
-      success_url: `${c.req.header('origin') || 'http://localhost:5173'}/?success=true&track=${trackName}&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${c.req.header('origin') || 'http://localhost:5173'}/?canceled=true`,
+      success_url: `${c.req.header('origin') || Deno.env.get('FRONTEND_URL') || 'http://localhost:5173'}/?success=true&track=${trackName}&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${c.req.header('origin') || Deno.env.get('FRONTEND_URL') || 'http://localhost:5173'}/?canceled=true`,
       metadata: {
         user_id: user.id,
         track_name: trackName,
       },
     });
-    
+
     console.log('✅ Checkout session created successfully:', {
       session_id: session.id,
       checkout_url: session.url?.substring(0, 50) + '...',
       user_id: user.id,
       track_name: trackName
     });
-    
+
     return c.json({ 
       success: true, 
       checkout_url: session.url,
@@ -813,15 +813,15 @@ app.post("/make-server-6d6f37b2/payments/create-bundle-checkout", async (c) => {
         },
       ],
       mode: 'payment',
-      success_url: `${c.req.header('origin') || 'http://localhost:5173'}/?success=true&bundle=true&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${c.req.header('origin') || 'http://localhost:5173'}/?canceled=true`,
+      success_url: `${c.req.header('origin') || Deno.env.get('FRONTEND_URL') || 'http://localhost:5173'}/?success=true&bundle=true&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${c.req.header('origin') || Deno.env.get('FRONTEND_URL') || 'http://localhost:5173'}/?canceled=true`,
       metadata: {
         user_id: user.id,
         is_bundle: 'true',
         bundle_tracks: trackNames.join(','),
       },
     });
-    
+
     console.log('✅ Bundle checkout session created successfully:', {
       session_id: session.id,
       checkout_url: session.url?.substring(0, 50) + '...',

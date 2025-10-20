@@ -1,25 +1,83 @@
-# CLAUDE.md
+# CLAUDE.md - Stoic AF Journal Development Guide
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code when working with this repository.
 
 ## Project Overview
 
 **Stoic AF Journal** is a React/Vite journaling application based on Figma design (https://www.figma.com/design/MlK7WLvdLiSSHTQdrKmsxT/Stoic-AF-Journal-PRD). It's a 30-day journaling program focused on four Stoic principles: Money, Relationships, Discipline, and Ego.
 
+---
+
+## ⚠️ CRITICAL: Environment Variables
+
+**NO HARDCODED CREDENTIALS ALLOWED.** All sensitive configuration must come from environment variables.
+
+### Required Environment Variables
+
+See `ENVIRONMENT_SETUP.md` and `.env.example` for complete list.
+
+**Frontend (Vite - VITE_ prefix):**
+- `VITE_SUPABASE_URL` - Supabase API endpoint (e.g., `http://supa.stoicaf.local` or `http://192.168.4.219:8000`)
+- `VITE_SUPABASE_ANON_KEY` - Public JWT key for Supabase auth
+- `VITE_SUPABASE_SERVICE_ROLE_KEY` - Service role key (server-side only, DO NOT expose in client code)
+
+**Backend (Deno Edge Functions):**
+- `SUPABASE_URL` - Supabase internal URL
+- `SUPABASE_SERVICE_ROLE_KEY` - Service role key for server operations
+- `SUPABASE_ANON_KEY` - Anon key for client operations within Edge Functions
+- `STRIPE_SECRET_KEY` - Stripe API secret key
+- `FRONTEND_URL` - Frontend URL for payment redirects (e.g., `https://stoicaf.local`)
+
+### Loading Environment Variables
+
+**Frontend (src/utils/supabase/info.tsx):**
+```typescript
+// Vite automatically exposes env vars with VITE_ prefix via import.meta.env
+export const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+```
+
+**Backend (Deno Edge Functions):**
+```typescript
+const supabaseUrl = Deno.env.get('SUPABASE_URL');
+```
+
+### Setting Environment Variables
+
+**Local Development (.env.local):**
+```bash
+cp .env.example .env.local
+# Edit .env.local with your values
+npm run dev
+```
+
+**Coolify Deployment:**
+Set variables in Coolify dashboard → Application Settings → Environment Variables
+
+**Never commit .env.local or .env files to git** - they're in `.gitignore`
+
+---
+
 ## Current Setup
 
-**Local Supabase** is configured and running at `http://supa.stoicaf.local`
-- 50+ Docker containers providing full Supabase stack
-- PostgreSQL database with custom users table and CRUD API
-- Authentication configured for local development
-- See `/home/scott/apps/stoicaf.local/supa-variables.md` for environment variables
+### Frontend
+- **Framework:** React 18 + TypeScript
+- **Build Tool:** Vite
+- **Dev Server:** Runs on port 3000
+- **Styling:** Tailwind CSS v4 with PostCSS
+- **UI Components:** shadcn/ui (Radix UI)
 
-**IMPORTANT:** For browser access, add to your local machine's `/etc/hosts`:
-```
-192.168.4.219   supa.stoicaf.local
-192.168.4.219   stoicaf.local
-```
-Without these entries, you'll get "Network connection failed" errors.
+### Backend
+- **Runtime:** Deno Edge Functions on Supabase
+- **Framework:** Hono (lightweight routing)
+- **Base Path:** `/make-server-6d6f37b2/`
+- **Data Storage:** Supabase KV store (not database tables)
+
+### Database
+- **Type:** PostgreSQL (via Supabase)
+- **Auth:** Supabase Auth + Custom JWT
+- **Schema:** `database/create_users_table.sql`
+
+---
 
 ## Development Commands
 
@@ -27,220 +85,144 @@ Without these entries, you'll get "Network connection failed" errors.
 # Install dependencies
 npm install
 
-# Development server (runs on port 3000)
+# Development server (port 3000)
 npm run dev
 
 # Build for production
 npm run build
 
-# Serve production build locally (port 3000)
+# Serve production build locally
 npm run start
-
-# Run tests (not yet configured)
-# npm test
-
-# Apply database schema (local Supabase)
-psql postgresql://postgres:5TbGOz9CsCY7n5UykN7cECnx49qeF6LM@localhost:5432/postgres -f database/create_users_table.sql
-
-# Deploy Edge Functions to local Supabase
-supabase functions deploy server --local
 ```
+
+---
 
 ## Architecture
 
 ### Frontend Structure
 
-The application follows a single-page architecture with three main states:
-- **Landing Page** (unauthenticated users)
-- **Dashboard** (authenticated users)
-- **Admin Panel** (admin users with `?admin=true` URL parameter)
+Three main views:
+- **Landing Page** - Unauthenticated users (marketing)
+- **Dashboard** - Authenticated users (main app)
+- **Admin Panel** - Admin users with `?admin=true` URL parameter
 
 **Key Entry Points:**
 - `src/main.tsx` - Application bootstrap
 - `src/App.tsx` - Root component with AuthProvider and ErrorBoundary
-- `src/components/AppContent.tsx` - Main routing logic that handles landing/dashboard/admin views
-
-### New User Management System
-
-Located in `src/api/users/`:
-- **userService.ts** - Complete CRUD operations with Supabase integration
-- **validation.ts** - Zod schemas for input validation (email, password, username, etc.)
-- **types.ts** - TypeScript interfaces for User, CreateUserDTO, UpdateUserDTO, etc.
-- **routes.tsx** - REST API route handlers and React hooks (`useUserApi`)
-- **__tests__/userService.test.ts** - Comprehensive test suite
-
-**Database Schema:** `database/create_users_table.sql`
-- Extended user profiles with RLS policies
-- Automatic triggers for profile creation and timestamps
-- Performance indexes on commonly queried fields
-
-### Authentication Flow
-
-Authentication is handled through a custom AuthContext (`src/contexts/AuthContext.tsx`) that wraps Supabase auth:
-
-1. **Non-blocking initialization** - App loads immediately, auth checks happen in background
-2. **Auth state management** - User and profile state managed centrally
-3. **API communication** - All backend calls use the `apiCall` helper function with automatic token injection
-
-**Important:** Auth loads asynchronously to prevent blocking the UI. Check for `user` and `profile` separately - they may be null even after loading completes.
+- `src/components/AppContent.tsx` - Main routing logic
 
 ### Backend Architecture
 
-The backend is a **Hono server** running on Deno (`src/supabase/functions/server/index.tsx`):
+Hono server running on Deno:
+- **KV Store Keys:**
+  - `profile:{userId}` - User profile data (track, day, streak)
+  - `purchases:{userId}` - Purchased track names
+  - `journal:{userId}:{trackName}` - Journal entries
+  - `preferences:{userId}` - User preferences
+  - `prompts:{TRACK_ID}` - Track seed data (30 days of content)
+  - `access_code:{code}` - Access code data
+  - `admin_emails` - Dynamic admin email list
 
-- **Base path:** `/make-server-6d6f37b2/`
-- **Data storage:** Supabase KV store (not database tables)
-- **Payment processing:** Stripe Checkout and Payment Intents
-- **Admin features:** User management, access code generation, track grants
+### Authentication Flow
 
-**KV Store Keys:**
-- `profile:{userId}` - User profile data (current track, day, streak, etc.)
-- `purchases:{userId}` - Array of purchased track names
-- `journal:{userId}:{trackName}` - Journal entries for a specific track
-- `preferences:{userId}` - User preferences
-- `prompts:{TRACK_ID}` - Track seed data (30 days of prompts, quotes, challenges)
-- `access_code:{code}` - Access code data for redemption
-- `admin_emails` - Dynamic admin email list
+1. **Custom AuthContext** (`src/contexts/AuthContext.tsx`) wraps Supabase auth
+2. **Non-blocking initialization** - App loads immediately, auth checks happen in background
+3. **User and profile state** - Managed centrally, load asynchronously
+4. **Token injection** - `apiCall` helper automatically adds auth tokens to requests
+
+**Important:** Auth loads asynchronously. Always check `user` AND `profile` separately - they may be null independently.
 
 ### Payment Flow
 
-**Two payment methods supported:**
+**Two methods supported:**
 
 1. **Stripe Checkout (redirect-based):**
-   - Frontend calls `/payments/create-checkout` or `/payments/create-bundle-checkout`
-   - User redirected to Stripe, then back to app with `?success=true&track=X&session_id=X`
-   - AppContent processes payment via `/payments/direct-purchase` or `/payments/process-bundle-purchase`
+   - Frontend calls `/payments/create-checkout`
+   - Redirects to Stripe, then back with `?success=true&session_id=X`
+   - `AppContent` processes via `/payments/direct-purchase`
 
 2. **Payment Intents (embedded form):**
    - Frontend calls `/payments/create-intent`
    - Uses Stripe Elements for card input
    - After payment, calls `/payments/process-payment-intent`
 
-**Important:** Always include `session_id` in success URLs for payment verification.
-
-**Payment Recovery Mechanism:**
-AppContent (lines 72-169) includes automatic payment recovery if `session_id` is missing:
-- Extracts `session_id` from URL using regex fallback
-- If no `session_id` found, polls `/purchases` endpoint up to 6 times (30 seconds)
-- Waits for Stripe webhook to process payment and update KV store
-- Shows appropriate error messages if payment can't be verified
-- This handles edge cases where payment succeeds but redirect parameters are malformed
+**Important:** Stripe redirect URLs use `FRONTEND_URL` environment variable (fallback: `origin` header, then localhost:5173).
 
 ### Track Data Structure
 
-Each track has 30 days of structured content:
+Tracks: `"Money"`, `"Relationships"`, `"Discipline"`, `"Ego"`
+
+Server-side track IDs (uppercase): `"MONEY"`, `"RELATIONSHIPS"`, `"DISCIPLINE"`, `"EGO"`
+
+30-day content per track:
 ```typescript
 {
-  track_id: "MONEY" | "RELATIONSHIPS" | "DISCIPLINE" | "EGO",
-  days: [{
-    day: number,
-    daily_theme: string,
-    stoic_quote: string,
-    quote_author: string,
-    bro_translation: string,
-    todays_challenge: string,
-    todays_intention: string,
-    evening_reflection_prompts: string[]
-  }]
+  day: number,
+  daily_theme: string,
+  stoic_quote: string,
+  quote_author: string,
+  bro_translation: string,
+  todays_challenge: string,
+  todays_intention: string,
+  evening_reflection_prompts: string[]
 }
 ```
 
-Track data is seeded via `/admin/seed-prompts` and fetched via `/prompts/:trackName`.
+---
 
 ## Styling System
 
-**Tailwind CSS v4** is configured with PostCSS:
-- **Config files:** `tailwind.config.js` and `postcss.config.js` in root directory
-- **Main CSS:** `src/styles/globals.css` contains theme variables and base styles
-- **PostCSS plugin:** Uses `@tailwindcss/postcss` (required for Tailwind v4)
-- **Content paths:** Scans `./index.html` and `./src/**/*.{js,ts,jsx,tsx}`
+- **Framework:** Tailwind CSS v4 with PostCSS
+- **Config Files:** `tailwind.config.js`, `postcss.config.js` (root directory)
+- **Main CSS:** `src/styles/globals.css` (theme variables, base styles)
+- **UI Components:** `src/components/ui/` (shadcn/ui + Radix UI)
+- **Utility:** `cn()` helper merges Tailwind classes with class-variance-authority
 
-**Important:** Config files must use CommonJS syntax (`module.exports`), not ES modules.
+**Important:** Config files must use CommonJS syntax and stay in root directory.
+
+---
 
 ## Component Structure
 
-**UI Components:** Located in `src/components/ui/` - shadcn/ui components built on Radix UI
+**UI Components:** `src/components/ui/` - shadcn/ui components
 - Use these for all new UI elements
-- Components use Tailwind CSS with class-variance-authority (cva)
-- Theme system supports light/dark modes via CSS variables
-- Helper function: `cn()` from `src/components/ui/utils.ts` merges Tailwind classes
+- Built on Radix UI
+- Theme system supports light/dark modes
 
 **View Components:**
-- `Dashboard.tsx` - Main user dashboard with track overview
+- `Dashboard.tsx` - Main user dashboard
 - `DashboardView.tsx` - Active track daily view
 - `ChallengesView.tsx` - Track challenges display
-- `AdminPanel.tsx` - Admin interface for user/track management
+- `AdminPanel.tsx` - Admin interface
 - `LandingPageUpdated.tsx` - Marketing landing page
 
 **Common Components:**
-- `AppHeader.tsx` - Top navigation with user menu
+- `AppHeader.tsx` - Top navigation
 - `BottomNavigation.tsx` - Mobile bottom nav
-- `AuthModal.tsx` - Login/signup modal
-- `ErrorBoundary.tsx` - Error handling wrapper
+- `AuthModal.tsx` - Login/signup
+- `ErrorBoundary.tsx` - Error handling
+
+---
 
 ## Admin System
 
-Admin access is email-based (checked in server-side `isAdminUser` function):
+**Admin Access:** Email-based
 
-**Hardcoded admins:**
+**Hardcoded Admins:**
 - admin@stoicaf.com
 - brad@stoicaf.com
 
-**Dynamic admins:** Stored in KV store under `admin_emails` key
+**Dynamic Admins:** Stored in KV store (`admin_emails` key)
 
 **Admin Features:**
-- User management (view all users, purchases, progress)
-- Grant/revoke track access
+- User management (view all, track access)
 - Generate redemption codes
-- Bootstrap endpoint for initial admin setup (should be removed after use)
+- Grant/revoke track access
+- Bootstrap endpoint (⚠️ should be removed after initial setup)
 
-**Access admin panel:** Add `?admin=true` to URL while logged in as admin
+**Access:** Add `?admin=true` to URL while logged in as admin
 
-## Environment Variables
-
-### Local Supabase (Current Configuration)
-
-Located in `src/utils/supabase/info.tsx`:
-```typescript
-export const supabaseUrl = "http://supa.stoicaf.local"
-export const publicAnonKey = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..."
-```
-
-Database connection for local development:
-- **Host:** localhost (or supa.stoicaf.local via /etc/hosts)
-- **Port:** 5432
-- **Database:** postgres
-- **Password:** 5TbGOz9CsCY7n5UykN7cECnx49qeF6LM
-
-See `supa-variables.md` for complete environment variable list.
-
-
-## Deployment
-
-### Frontend Deployment (Coolify)
-
-**Two deployment options available:**
-
-1. **Dockerfile (Recommended):**
-   - Multi-stage Alpine-based build for smaller images
-   - More reliable and faster than Nixpacks
-   - Set build pack to "Dockerfile" in Coolify settings
-
-2. **Nixpacks:**
-   - Alternative build method
-   - Optimized with `--prefer-offline --no-audit` flags
-   - Set build pack to "Nixpacks" in Coolify settings
-
-**Common Configuration:**
-- Build output directory: `build/`
-- Production server: `serve -s build -l 3000`
-- Port: 3000
-- Automatic deployment: Push to `main` branch triggers rebuild
-- See `DEPLOYMENT.md` for complete Coolify instructions
-
-### Backend Deployment (Supabase Edge Function)
-
-For local Supabase, Edge Functions are deployed to the local container stack. The function code is in `supabase/functions/server/index.ts`.
+---
 
 ## Code Patterns
 
@@ -248,11 +230,10 @@ For local Supabase, Edge Functions are deployed to the local container stack. Th
 
 ```typescript
 import { supabase } from '../utils/supabase/client';
-import { supabaseUrl, publicAnonKey } from '../utils/supabase/info';
 
 // Get auth token
 const { data: { session } } = await supabase.auth.getSession();
-const accessToken = session?.access_token || publicAnonKey;
+const accessToken = session?.access_token;
 
 // Make authenticated request
 const response = await fetch(
@@ -268,78 +249,158 @@ const response = await fetch(
 );
 ```
 
-**Using the new User API:**
-```typescript
-import { useUserApi } from './api/users/routes';
-
-// In component
-const { getCurrentUser, updateUser, loading, error } = useUserApi();
-
-// Or direct service calls
-import { UserService } from './api/users/userService';
-const result = await UserService.getUserById(userId);
-```
-
 ### Handling Auth State
 
 ```typescript
 const { user, profile, loading } = useAuth();
 
-// Always check user AND profile separately
+// Always check BOTH separately
 if (!user) {
   // Show login
 }
-
 if (!profile) {
   // Profile loading or error
 }
 ```
 
-### Working with Tracks
-
-Track names must be: `"Money"`, `"Relationships"`, `"Discipline"`, or `"Ego"`
-Server-side track IDs are uppercase: `"MONEY"`, `"RELATIONSHIPS"`, `"DISCIPLINE"`, `"EGO"`
-
 ### Error Handling
 
-- All components wrapped in ErrorBoundary at root
-- API errors should return user-friendly messages
-- Use `toast` from `sonner` for user notifications
+- Root ErrorBoundary catches all component errors
+- API errors return user-friendly messages
+- Use `toast` from `sonner` for notifications
 
-## Figma Design Reference
-
-This codebase implements the design from Figma file MlK7WLvdLiSSHTQdrKmsxT.
-- Uses shadcn/ui components (MIT license)
-- Includes Unsplash photos (Unsplash license)
-- See `src/Attributions.md` for full attribution details
+---
 
 ## Special Considerations
 
-1. **DNS Resolution:** Users must add `supa.stoicaf.local` and `stoicaf.local` to their `/etc/hosts` file pointing to the server IP (192.168.4.219) for the application to work. See `FIX_SIGNIN_ERROR.md` for detailed instructions.
+1. **No Hardcoded Credentials** - All sensitive data MUST use environment variables
+2. **KV Store Operations** - User data lives in Supabase KV, not database tables
+3. **Non-blocking Auth** - Never add blocking auth checks that prevent initial render
+4. **Payment Webhooks** - Stripe webhook signature verification is incomplete (⚠️)
+5. **Admin Bootstrap** - `/admin/bootstrap` endpoint should be removed after initial setup
+6. **Module Aliases** - Vite config maps package versions for Deno compatibility
+7. **Tailwind v4** - Requires `@tailwindcss/postcss` plugin, config files in root
+8. **Deployment Options** - Both Dockerfile and Nixpacks available (Dockerfile recommended)
 
-2. **KV Store Operations:** All user data is in Supabase KV, not database tables. Handle KV errors gracefully with fallback to default values.
+---
 
-3. **Payment Webhooks:** Stripe webhook endpoint exists at `/payments/webhook` but webhook signature verification is noted as incomplete. Webhook should handle `checkout.session.completed` events.
+## Deployment
 
-4. **Admin Bootstrap Security:** The `/admin/bootstrap` endpoint (line 1718 in server index.tsx) should be removed after initial admin setup for security.
+### Coolify Frontend Deployment
 
-5. **User Table Creation:** Run the SQL script to create the users table: `psql postgresql://postgres:5TbGOz9CsCY7n5UykN7cECnx49qeF6LM@localhost:5432/postgres -f database/create_users_table.sql`
+**Build Packs Available:**
+1. **Dockerfile** (Recommended) - Multi-stage Alpine build
+2. **Nixpacks** - Alternative with `--prefer-offline --no-audit`
 
-6. **Module Aliases:** Vite config includes extensive module version aliases (e.g., `stripe@17.3.1` -> `stripe`). This is to handle JSR/npm package resolution in Deno Edge Functions.
+**Configuration:**
+- Build output: `build/`
+- Production server: `serve -s build -l 3000`
+- Port: 3000
+- Deployment: Push to `main` triggers rebuild
 
-7. **Non-blocking Auth:** The auth system intentionally loads the app before completing auth checks. Never add blocking auth checks that prevent initial render. Auth initializes in background after 100ms delay (AuthContext.tsx:340).
+**Environment Variables Required:**
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
+- `VITE_SUPABASE_SERVICE_ROLE_KEY`
 
-8. **Dev Track Grants:** The `/dev/grant-track` endpoint exists for development testing and should be disabled in production.
+### Supabase Edge Functions
 
-9. **Tailwind CSS Configuration:** The project uses Tailwind v4 which requires `@tailwindcss/postcss` plugin. Config files must be in root directory and use CommonJS syntax. Never move config files to `src/` directory.
+Edge Functions code: `src/supabase/functions/server/index.tsx`
 
-10. **Deployment Options:** Both Dockerfile and Nixpacks configurations exist. Dockerfile is recommended for more reliable builds. Nixpacks has been optimized with `--prefer-offline --no-audit` flags to prevent timeout issues.
+**Environment Variables Required:**
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `SUPABASE_ANON_KEY`
+- `STRIPE_SECRET_KEY`
+- `FRONTEND_URL`
 
-11. **Landing Page Structure:** Landing page is split into modular sections in `src/components/landing/`:
-    - `HeroSection.tsx` - Main hero with CTA buttons
-    - `ProblemsSection.tsx` - Pain points
-    - `SolutionSection.tsx` - Value proposition
-    - `TracksSection.tsx` - Track details and purchase flow
-    - `SocialProofSection.tsx` - Testimonials
-    - `FooterCTA.tsx` - Final call to action
-    - `data.tsx` - Static content data for landing sections
+---
+
+## File Structure
+
+```
+.
+├── src/
+│   ├── main.tsx                          # App entry point
+│   ├── App.tsx                           # Root component
+│   ├── components/
+│   │   ├── AppContent.tsx                # Routing logic
+│   │   ├── Dashboard.tsx                 # Main dashboard
+│   │   ├── AdminPanel.tsx                # Admin interface
+│   │   ├── ui/                           # shadcn/ui components
+│   │   └── ...
+│   ├── contexts/
+│   │   └── AuthContext.tsx               # Auth state management
+│   ├── utils/
+│   │   └── supabase/
+│   │       ├── client.tsx                # Supabase client
+│   │       └── info.tsx                  # Config (env vars required)
+│   ├── api/
+│   │   └── users/                        # User management system
+│   ├── styles/
+│   │   └── globals.css                   # Tailwind + theme vars
+│   └── supabase/functions/server/        # Backend (Deno Edge Functions)
+├── database/
+│   └── create_users_table.sql            # DB schema
+├── supabase/                             # Supabase config
+├── .env.example                          # Env var template
+├── ENVIRONMENT_SETUP.md                  # Setup instructions
+├── CLAUDE.md                             # This file
+├── DEPLOYMENT.md                         # Coolify deployment guide
+├── vite.config.ts                        # Vite configuration
+├── tailwind.config.js                    # Tailwind configuration
+├── postcss.config.js                     # PostCSS configuration
+└── Dockerfile                            # Production build
+
+```
+
+---
+
+## Documentation Files
+
+- **ENVIRONMENT_SETUP.md** - How to set up environment variables
+- **DEPLOYMENT.md** - Coolify deployment instructions
+- **.env.example** - Reference template for all environment variables
+- **COOLIFY_SUPABASE_SETUP.md** - Supabase-specific setup (legacy, see ENVIRONMENT_SETUP.md)
+
+---
+
+## Troubleshooting
+
+### "Missing required environment variable" Error
+
+**Cause:** Environment variable not set
+
+**Fix:**
+1. Check `.env.local` exists in project root
+2. Compare against `.env.example`
+3. Restart dev server after editing `.env.local`
+
+### Supabase Connection Failed
+
+**Cause:** Wrong URL in environment variables
+
+**Fix:**
+1. Verify `VITE_SUPABASE_URL` is correct
+2. For local: `http://192.168.4.219:8000` or `http://supa.stoicaf.local`
+3. For Coolify: Check internal networking configuration
+
+### Auth Token Invalid
+
+**Cause:** Wrong JWT key
+
+**Fix:**
+1. Verify `VITE_SUPABASE_ANON_KEY` matches deployment
+2. Rebuild frontend after updating keys
+3. Check Supabase dashboard for current keys
+
+---
+
+## Resources
+
+- **Vite Docs:** https://vitejs.dev
+- **React Docs:** https://react.dev
+- **Supabase Docs:** https://supabase.com/docs
+- **Tailwind CSS:** https://tailwindcss.com
+- **Hono Docs:** https://hono.dev
+- **Stripe Docs:** https://stripe.com/docs

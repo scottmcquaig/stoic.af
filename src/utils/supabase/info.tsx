@@ -1,19 +1,28 @@
-/* Supabase Configuration for Coolify Environment */
+/* Supabase Configuration - Environment Variables Required */
 
-// IMPORTANT: For browser access, add this to your LOCAL computer's /etc/hosts file:
-// 192.168.4.219   supa.stoicaf.local
-// 192.168.4.219   stoicaf.local
-// (Windows: C:\Windows\System32\drivers\etc\hosts)
+// All configuration must come from environment variables
+// DO NOT hardcode URLs, keys, or other credentials
+// See .env.example and ENVIRONMENT_SETUP.md for required variables
 
-// Use environment variables if available, otherwise fall back to direct URL
-// For production, consider using Coolify's proxy feature to avoid cross-domain issues
-export const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "http://supa.stoicaf.local"
+const getRequiredEnv = (key: string): string => {
+  const value = import.meta.env[key];
+  if (!value) {
+    throw new Error(
+      `Missing required environment variable: ${key}. ` +
+      `Please check .env.local or your deployment environment variables. ` +
+      `See ENVIRONMENT_SETUP.md for details.`
+    );
+  }
+  return value;
+};
 
-// Updated anon key from Coolify's generated environment (supa-variables.md)
-export const publicAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNzYwNDgyMTI3LCJleHAiOjIwNzU4NDIxMjd9.Dq0e3_lyOjEuwePRscF84wDQd3fAJtEb_VSZnf2DRHs"
+// Supabase configuration - MUST be set via environment variables
+export const supabaseUrl = getRequiredEnv('VITE_SUPABASE_URL');
+export const publicAnonKey = getRequiredEnv('VITE_SUPABASE_ANON_KEY');
 
-// Service role key for server-side operations (DO NOT expose in client code)
-export const serviceRoleKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIiwiaXNzIjoic3VwYWJhc2UiLCJpYXQiOjE3NjA0ODIxMjcsImV4cCI6MjA3NTg0MjEyN30.zGK8pLWTq_nRhKzkyoDdxD13Lj2MnvkEyKclQAmFMOs"
+// Service role key - should only be used in server functions (Deno Edge Functions)
+// This is exported for reference only - DO NOT use in client code
+export const serviceRoleKey = getRequiredEnv('VITE_SUPABASE_SERVICE_ROLE_KEY');
 
-// Keep projectId for backward compatibility (not used for local instance)
-export const projectId = "local"
+// Project ID for backward compatibility
+export const projectId = 'stoicaf';
