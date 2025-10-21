@@ -1,11 +1,12 @@
 version: '3.8'
 
 services:
-  # Main frontend application
+  # Main frontend application - Stoic AF
   app:
     build:
       context: .
       dockerfile: Dockerfile
+    container_name: stoic-af
     ports:
       - "3000:3000"
     environment:
@@ -14,9 +15,6 @@ services:
       - VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY}
       - VITE_SUPABASE_SERVICE_ROLE_KEY=${VITE_SUPABASE_SERVICE_ROLE_KEY}
       - FRONTEND_URL=${FRONTEND_URL}
-    depends_on:
-      function-deployer:
-        condition: service_completed_successfully
     networks:
       - stoicaf
     restart: unless-stopped
@@ -26,22 +24,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-
-  # Deploy Edge Functions to Supabase (runs once on startup)
-  function-deployer:
-    build:
-      context: .
-      dockerfile: Dockerfile.deployer
-    environment:
-      - EDGE_CONTAINER_PATTERN=supabase-edge-functions
-      - FUNCTION_SOURCE_DIR=/app/src/supabase/functions/server
-      - FUNCTION_DEST_DIR=/home/deno/functions/make-server-6d6f37b2
-    volumes:
-      # Access Docker socket to interact with containers
-      - /var/run/docker.sock:/var/run/docker.sock
-    networks:
-      - stoicaf
-    restart: "no"
 
 networks:
   stoicaf:
