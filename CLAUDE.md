@@ -286,6 +286,15 @@ if (!profile) {
 
 ## Deployment
 
+### Current Deployment Configuration
+
+This deployment is configured for **self-hosted Supabase** at `https://api.mcquaig.org`:
+
+- **Frontend URL:** `https://stoic.mcquaig.org`
+- **Supabase Instance:** Self-hosted at `https://api.mcquaig.org`
+- **Database:** PostgreSQL via self-hosted Supabase
+- **Docker Compose:** Simplified (frontend-only, no function-deployer service)
+
 ### Coolify Frontend Deployment
 
 **Build Packs Available:**
@@ -299,9 +308,10 @@ if (!profile) {
 - Deployment: Push to `main` triggers rebuild
 
 **Environment Variables Required:**
-- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_URL` - Currently: `https://api.mcquaig.org`
 - `VITE_SUPABASE_ANON_KEY`
 - `VITE_SUPABASE_SERVICE_ROLE_KEY`
+- `FRONTEND_URL` - Currently: `https://stoic.mcquaig.org`
 
 ### Supabase Edge Functions
 
