@@ -1,3 +1,7 @@
+# Dockerfile for Stoic AF Frontend
+# NOTE: This builds the React frontend only.
+# Edge Functions must be deployed separately via Supabase CLI or Dashboard
+
 # Use Node 20 Alpine for smaller image size
 FROM node:20-alpine AS builder
 
@@ -10,10 +14,10 @@ COPY package*.json ./
 # Install dependencies
 RUN npm ci --prefer-offline --no-audit
 
-# Copy source code (includes Edge Functions)
+# Copy source code
 COPY . .
 
-# Build the application
+# Build the React application
 RUN npm run build
 
 # Production stage

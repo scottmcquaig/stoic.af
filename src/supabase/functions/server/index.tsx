@@ -74,9 +74,114 @@ const getUser = async (authorization: string | undefined) => {
   return user;
 };
 
-// Health check endpoint
-app.get("/make-server-6d6f37b2/health", (c) => {
-  return c.json({ status: "ok" });
+// Health check endpoint with database connectivity test
+app.get("/make-server-6d6f37b2/health", async (c) => {
+  const health: any = {
+    status: "checking",
+    timestamp: new Date().toISOString(),
+    checks: {}
+  };
+
+  // Check environment variables
+  health.checks.environment = {
+    supabase_url: !!Deno.env.get('SUPABASE_URL'),
+    service_role_key: !!Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'),
+    anon_key: !!Deno.env.get('SUPABASE_ANON_KEY'),
+    stripe_key: !!Deno.env.get('STRIPE_SECRET_KEY'),
+    frontend_url: !!Deno.env.get('FRONTEND_URL')
+  };
+
+  // Check Supabase client initialization
+  health.checks.supabase_client = !!supabase;
+
+  // Test KV store connectivity
+  try {
+    const testKey = 'health:check:' + Date.now();
+    const testValue = { test: true, timestamp: new Date().toISOString() };
+
+    console.log('🏥 Health check: Testing KV store write...');
+    await kv.set(testKey, testValue);
+
+    console.log('🏥 Health check: Testing KV store read...');
+    const retrieved = await kv.get(testKey);
+
+    console.log('🏥 Health check: Testing KV store delete...');
+    await kv.del(testKey);
+
+    health.checks.kv_store = {
+      status: 'healthy',
+      can_write: true,
+      can_read: true,
+      can_delete: true,
+      test_successful: JSON.stringify(retrieved) === JSON.stringify(testValue)
+    };
+  } catch (kvError) {
+    console.error('❌ Health check KV store error:', kvError);
+    health.checks.kv_store = {
+      status: 'unhealthy',
+      error: kvError instanceof Error ? kvError.message : 'Unknown KV error',
+      details: 'KV store operations failed - check if kv_store_6d6f37b2 table exists'
+    };
+  }
+
+  // Test Supabase auth connectivity
+  try {
+    if (supabase?.auth?.admin) {
+      // Try to list users (with limit 1 to be quick)
+      const { error } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1 });
+      if (error) {
+        health.checks.supabase_auth = {
+          status: 'unhealthy',
+          error: error.message
+        };
+      } else {
+        health.checks.supabase_auth = {
+          status: 'healthy',
+          admin_available: true
+        };
+      }
+    } else {
+      health.checks.supabase_auth = {
+        status: 'unhealthy',
+        error: 'Supabase admin auth not available'
+      };
+    }
+  } catch (authError) {
+    health.checks.supabase_auth = {
+      status: 'unhealthy',
+      error: authError instanceof Error ? authError.message : 'Unknown auth error'
+    };
+  }
+
+  // Determine overall health
+  const isHealthy = health.checks.environment.supabase_url &&
+                    health.checks.environment.service_role_key &&
+                    health.checks.supabase_client &&
+                    health.checks.kv_store?.status === 'healthy' &&
+                    health.checks.supabase_auth?.status === 'healthy';
+
+  health.status = isHealthy ? 'healthy' : 'unhealthy';
+
+  // Add recommendations if unhealthy
+  if (!isHealthy) {
+    health.recommendations = [];
+
+    if (!health.checks.environment.supabase_url || !health.checks.environment.service_role_key) {
+      health.recommendations.push('Set required environment variables (SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)');
+    }
+
+    if (health.checks.kv_store?.status === 'unhealthy') {
+      health.recommendations.push('Create kv_store_6d6f37b2 table - run SQL from database/create_kv_store_table.sql');
+    }
+
+    if (health.checks.supabase_auth?.status === 'unhealthy') {
+      health.recommendations.push('Check Supabase service role key permissions');
+    }
+  }
+
+  console.log('🏥 Health check result:', health);
+
+  return c.json(health, isHealthy ? 200 : 503);
 });
 
 // Stripe configuration endpoint
@@ -97,51 +202,103 @@ app.get("/make-server-6d6f37b2/stripe/config", (c) => {
 // Authentication endpoints
 app.post("/make-server-6d6f37b2/auth/signup", async (c) => {
   try {
-    const { email, password, fullName } = await c.req.json();
+    console.log('📝 Signup endpoint called');
+
+    // Parse request body
+    let requestBody;
+    try {
+      requestBody = await c.req.json();
+      console.log('📦 Request body parsed successfully');
+    } catch (parseError) {
+      console.error('❌ Failed to parse request body:', parseError);
+      return c.json({ error: 'Invalid request body format' }, 400);
+    }
+
+    const { email, password, fullName } = requestBody;
 
     if (!email || !password || !fullName) {
+      console.log('❌ Missing required fields:', { hasEmail: !!email, hasPassword: !!password, hasFullName: !!fullName });
       return c.json({ error: 'Email, password, and full name are required' }, 400);
     }
 
-    console.log('Creating user with Supabase auth for email:', email);
-    
+    // Check Supabase client initialization
+    if (!supabase) {
+      console.error('❌ Supabase client is not initialized');
+      const supabaseUrl = Deno.env.get('SUPABASE_URL');
+      const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+      console.error('Environment check:', {
+        hasUrl: !!supabaseUrl,
+        hasKey: !!supabaseKey,
+        urlValue: supabaseUrl?.substring(0, 30)
+      });
+      return c.json({ error: 'Server configuration error - Supabase not initialized' }, 500);
+    }
+
+    console.log('🔐 Creating user with Supabase auth for email:', email);
+
+    // Check if auth.admin is available
+    if (!supabase.auth?.admin) {
+      console.error('❌ Supabase admin auth not available');
+      return c.json({ error: 'Server configuration error - Admin auth not available' }, 500);
+    }
+
     // Create user with admin privileges
-    const { data, error } = await supabase.auth.admin.createUser({
-      email,
-      password,
-      user_metadata: { name: fullName },
-      // Automatically confirm the user's email since an email server hasn't been configured
-      email_confirm: true
-    });
+    let authResult;
+    try {
+      authResult = await supabase.auth.admin.createUser({
+        email,
+        password,
+        user_metadata: { name: fullName },
+        // Automatically confirm the user's email since an email server hasn't been configured
+        email_confirm: true
+      });
+      console.log('✅ Supabase auth.admin.createUser call completed');
+    } catch (authError) {
+      console.error('❌ Supabase auth.admin.createUser threw exception:', authError);
+      return c.json({
+        error: 'Failed to create user account',
+        details: authError instanceof Error ? authError.message : 'Unknown auth error'
+      }, 500);
+    }
+
+    const { data, error } = authResult;
 
     if (error) {
       // Handle specific error cases
-      if (error.code === 'email_exists' || 
-          error.message.includes('already been registered') || 
-          error.message.includes('User already registered')) {
+      if (error.code === 'email_exists' ||
+          error.message?.includes('already been registered') ||
+          error.message?.includes('User already registered')) {
         console.log('🔍 Email already exists for signup attempt:', email);
-        return c.json({ 
+        return c.json({
           error: 'Account already exists with this email address. Please try logging in instead.',
           code: 'email_exists'
         }, 422);
-      } else if (error.message.includes('Invalid email')) {
+      } else if (error.message?.includes('Invalid email')) {
         console.error('❌ Invalid email format during signup:', email);
         return c.json({ error: 'Please enter a valid email address' }, 400);
-      } else if (error.message.includes('Password')) {
+      } else if (error.message?.includes('Password')) {
         console.error('❌ Password validation failed during signup');
         return c.json({ error: 'Password does not meet security requirements' }, 400);
       } else {
-        console.error('❌ Unexpected Supabase auth error:', error);
-        return c.json({ error: `Signup failed: ${error.message}` }, 400);
+        console.error('❌ Unexpected Supabase auth error:', {
+          code: error.code,
+          message: error.message,
+          status: error.status
+        });
+        return c.json({
+          error: `Signup failed: ${error.message}`,
+          code: error.code
+        }, 400);
       }
     }
 
     if (!data?.user) {
-      console.error('User creation succeeded but no user data returned');
+      console.error('❌ User creation succeeded but no user data returned');
       return c.json({ error: 'User creation failed - no user data' }, 500);
     }
 
-    console.log('User created successfully, creating profile...');
+    console.log('✅ User created successfully with ID:', data.user.id);
+    console.log('📋 Creating user profile in KV store...');
 
     // Create initial user profile in KV store
     const userProfile = {
@@ -158,16 +315,39 @@ app.post("/make-server-6d6f37b2/auth/signup", async (c) => {
     const userPurchases: string[] = [];
 
     try {
+      console.log('💾 Attempting to save profile to KV store with key:', `profile:${data.user.id}`);
       await kv.set(`profile:${data.user.id}`, userProfile);
+      console.log('✅ Profile saved successfully');
+
+      console.log('💾 Attempting to save purchases to KV store with key:', `purchases:${data.user.id}`);
       await kv.set(`purchases:${data.user.id}`, userPurchases);
-      console.log('Signup completed successfully for:', email);
+      console.log('✅ Purchases saved successfully');
+
+      console.log('🎉 Signup completed successfully for:', email);
     } catch (kvError) {
-      console.error('KV store error:', kvError);
-      return c.json({ error: 'User created but profile setup failed' }, 500);
+      console.error('❌ KV store error details:', {
+        message: kvError instanceof Error ? kvError.message : 'Unknown KV error',
+        stack: kvError instanceof Error ? kvError.stack : undefined,
+        error: kvError
+      });
+
+      // Try to clean up the created user since profile creation failed
+      try {
+        console.log('🧹 Attempting to delete user due to profile creation failure');
+        await supabase.auth.admin.deleteUser(data.user.id);
+        console.log('✅ User deleted successfully');
+      } catch (deleteError) {
+        console.error('⚠️ Could not delete user after profile creation failure:', deleteError);
+      }
+
+      return c.json({
+        error: 'User created but profile setup failed. Please try again.',
+        details: kvError instanceof Error ? kvError.message : 'KV store error'
+      }, 500);
     }
-    
-    return c.json({ 
-      success: true, 
+
+    return c.json({
+      success: true,
       user: {
         id: data.user.id,
         email: data.user.email,
@@ -176,9 +356,16 @@ app.post("/make-server-6d6f37b2/auth/signup", async (c) => {
       }
     });
   } catch (error) {
-    console.error('Signup error (outer catch):', error);
+    console.error('❌ Signup error (outer catch):', {
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+      error: error
+    });
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    return c.json({ error: `Internal server error during signup: ${errorMessage}` }, 500);
+    return c.json({
+      error: `Internal server error during signup`,
+      details: errorMessage
+    }, 500);
   }
 });
 

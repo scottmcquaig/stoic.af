@@ -53,8 +53,7 @@
             "sonner": "^2.0.3",
             "stripe": "^17.3.1",
             "tailwind-merge": "*",
-            "vaul": "*",
-            "vite": "*"
+            "vaul": "*"
       },
       "devDependencies": {
             "@tailwindcss/postcss": "^4.1.14",
@@ -62,12 +61,17 @@
             "@vitejs/plugin-react-swc": "^3.10.2",
             "autoprefixer": "^10.4.21",
             "postcss": "^8.5.6",
+            "supabase": "^2.53.6",
             "tailwindcss": "^4.1.14",
-            "vite": "6.3.5"
+            "vite": "^6.4.1"
       },
       "scripts": {
             "dev": "vite",
             "build": "vite build",
-            "start": "serve -s build -l 3000"
+            "start": "serve -s build -l 3000",
+            "setup:database": "./scripts/setup-database.sh",
+            "deploy:functions": "./scripts/deploy-edge-function.sh",
+            "deploy:all": "npm run setup:database && npm run deploy:functions",
+            "test:health": "curl https://api.mcquaig.org/functions/v1/make-server-6d6f37b2/health"
       }
 }

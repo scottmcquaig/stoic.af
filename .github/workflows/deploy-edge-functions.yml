@@ -1,0 +1,96 @@
+# GitHub Actions Workflow for Automated Edge Function Deployment
+name: Deploy Supabase Edge Functions
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/supabase/functions/**'
+      - 'supabase/functions/**'
+      - '.github/workflows/deploy-edge-functions.yml'
+  workflow_dispatch: # Allow manual trigger
+
+env:
+  SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+  SUPABASE_PROJECT_ID: vuqwcuhudysudgjbeota
+  SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Install Supabase CLI
+        run: |
+          npm install -g supabase
+          supabase --version
+
+      - name: Sync Edge Function files
+        run: |
+          echo "📦 Syncing Edge Function files..."
+
+          # Ensure deployment directory exists
+          mkdir -p supabase/functions/server
+
+          # Copy files from src to deployment directory
+          if [ -f "src/supabase/functions/server/index.tsx" ]; then
+            cp src/supabase/functions/server/index.tsx supabase/functions/server/index.ts
+            echo "✅ Copied index.tsx"
+          fi
+
+          if [ -f "src/supabase/functions/server/kv_store.tsx" ]; then
+            cp src/supabase/functions/server/kv_store.tsx supabase/functions/server/kv_store.tsx
+            echo "✅ Copied kv_store.tsx"
+          fi
+
+          # List files to confirm
+          echo "📋 Files in deployment directory:"
+          ls -la supabase/functions/server/
+
+      - name: Deploy to Supabase
+        run: |
+          # Link to project using access token
+          supabase link --project-ref ${{ env.SUPABASE_PROJECT_ID }}
+
+          # Deploy the Edge Function
+          supabase functions deploy server --no-verify-jwt
+
+          echo "✅ Edge Function deployed successfully!"
+
+      - name: Test deployment
+        run: |
+          # Wait a moment for deployment to be ready
+          sleep 10
+
+          # Test the health endpoint
+          HEALTH_URL="https://api.mcquaig.org/functions/v1/make-server-6d6f37b2/health"
+          echo "🧪 Testing health endpoint: $HEALTH_URL"
+
+          response=$(curl -s -o /dev/null -w "%{http_code}" "$HEALTH_URL")
+
+          if [ "$response" = "200" ]; then
+            echo "✅ Health check passed!"
+          else
+            echo "⚠️ Health check returned status: $response"
+            echo "Check the Edge Function logs for details"
+          fi
+
+      - name: Deployment summary
+        if: always()
+        run: |
+          echo "========================================="
+          echo "📊 Deployment Summary"
+          echo "========================================="
+          echo "Project: ${{ env.SUPABASE_PROJECT_ID }}"
+          echo "Branch: ${{ github.ref_name }}"
+          echo "Commit: ${{ github.sha }}"
+          echo "========================================="
