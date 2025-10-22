@@ -20,9 +20,5 @@ const getRequiredEnv = (key: string): string => {
 export const supabaseUrl = getRequiredEnv('VITE_SUPABASE_URL');
 export const publicAnonKey = getRequiredEnv('VITE_SUPABASE_ANON_KEY');
 
-// Service role key - should only be used in server functions (Deno Edge Functions)
-// This is exported for reference only - DO NOT use in client code
-export const serviceRoleKey = getRequiredEnv('VITE_SUPABASE_SERVICE_ROLE_KEY');
-
 // Project ID for backward compatibility
 export const projectId = 'stoicaf';
